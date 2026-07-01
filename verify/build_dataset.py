@@ -2,10 +2,26 @@
 # Единый build датасета SIMILIS. Заменяет data_prep + merge_novgu.
 # Чистые одиночные снимки (приоритет search_result — реальные обработанные изображения),
 # кроп к объекту + отсечение композитов, СТРОГАЯ типо-когерентность similarity (крест→кресты).
-import openpyxl, os, glob, re, json, csv, collections
+import openpyxl, os, glob, re, json, csv, collections, hashlib
 from PIL import Image
 import numpy as np
 Image.MAX_IMAGE_PIXELS = None
+
+# ── EN-переводы (для UI при выборе EN) ──
+TYPE_EN={'Штоф':'Shtof bottle','Чашка':'Cup','Кувшин':'Jug','Чернильница':'Inkwell','Черепица':'Roof tile',
+ 'Изделие из янтаря':'Amber item','Пуговица':'Button','Банка помадная':'Pomade jar','Банка':'Jar','Баночка':'Small jar',
+ 'Бутылка':'Bottle','Флакон':'Flacon','Сосуд':'Vessel','Ложка':'Spoon','Вилка':'Fork','Топор':'Axe','Крест':'Cross',
+ 'Подвеска':'Pendant','Бусина':'Bead','Шип ледоходный':'Ice cleat','Змеевик':'Zmeevik amulet','Гребень':'Comb',
+ 'Туфля':'Shoe','Печать':'Seal','Грамота берестяная':'Birch-bark letter','Булавка':'Pin','Перстень':'Ring',
+ 'Браслет':'Bracelet','Пломба':'Lead seal'}
+MAT_EN={'Стекло':'Glass','Керамика':'Ceramics','Глина':'Clay','Фаянс':'Faience','Красноглиняная керамика':'Redware',
+ 'Цветной металл':'Non-ferrous metal','Чёрный металл':'Ferrous metal','Черный металл':'Ferrous metal','Кость':'Bone',
+ 'Кожа':'Leather','Дерево':'Wood','Янтарь':'Amber','Береста':'Birch bark','Камень':'Stone','—':'—'}
+OWNER_EN={'ИИМК РАН':'IIMK RAS','НовГУ':'NovSU'}
+SITE_EN={'Ниеншанц (Охта 1)':'Nyenschanz (Okhta 1)','Большая Посадская 12А':'Bolshaya Posadskaya 12A',
+ 'Нейшлотский 3А':'Neyshlotsky 3A','Тульская (СПб)':'Tulskaya (SPb)','Сытнинская (Козье Болото)':'Sytninskaya',
+ 'Загородный':'Zagorodny','Старая Русса':'Staraya Russa','Пески':'Peski'}
+def ten(d,v): return d.get(v, v)
 
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUTIMG = os.path.join(BASE, 'prototype', 'public', 'img')
@@ -81,19 +97,23 @@ def features(im):
 
 items=[]; fc=[]; fs=[]
 def add(imgpath, code, name, material, meta, type_label, owner=None):
+    if any(it['id']==code for it in items): return
     try: im=load_clean(imgpath)
     except Exception as e: return
-    imid=re.sub(r'[^A-Za-zА-Яа-я0-9_-]','_',code)
-    if any(it['id']==imid for it in items): return
-    im.save(os.path.join(OUTIMG,imid+'.jpg'),'JPEG',quality=84)
+    fileid=hashlib.md5(code.encode('utf-8')).hexdigest()[:12]
+    im.save(os.path.join(OUTIMG,fileid+'.jpg'),'JPEG',quality=84)
     col,sh=features(im); fc.append(col); fs.append(sh)
     site,lon,lat=site_of(code, meta.get('site') if meta else None)
-    items.append(dict(id=imid,code=code,name=name,material=material or (meta.get('material') if meta else '') or '—',
+    mat=material or (meta.get('material') if meta else '') or '—'
+    own=owner or 'ИИМК РАН'
+    items.append(dict(id=code,code=code,name=name,name_en=ten(TYPE_EN,name),
+        material=mat,material_en=ten(MAT_EN,mat),
         description=(meta.get('description') if meta else '') or '', size=(meta.get('size') if meta else '') or '',
         square=(meta.get('square') if meta else '') or '', object=(meta.get('object') if meta else '') or '',
         excname=(meta.get('excname') if meta else '') or '', dating='',
-        macro=macro_of(material or (meta.get('material') if meta else '')), type=type_label,
-        site=site, owner=owner or 'ИИМК РАН', lon=lon, lat=lat, img='img/'+imid+'.jpg', external=False, in_ardb=bool(meta)))
+        macro=macro_of(mat), type=type_label,
+        site=site, site_en=ten(SITE_EN,site), owner=own, owner_en=ten(OWNER_EN,own),
+        lon=lon, lat=lat, img='img/'+fileid+'.jpg', external=False, in_ardb=bool(meta)))
 
 # ── Источник A: search_result (чистые обработанные, приоритет) ──
 seen_hash=set()
@@ -131,10 +151,11 @@ nov_start=len(items)
 for fnd in nov['finds']:
     s=str(fnd['id']); url=f'https://portal.novsu.ru/arc.novsu.ru/np-includes/upload/arc_small/{s[-3]}/{s[-2]}/{s[-1]}/{s}.png'
     lon,lat=NCO.get(fnd['site'],(31.36,57.99))
-    items.append(dict(id='НГУ-'+s,code='НГУ-'+s,name=fnd['name'],material=fnd['material'],description=fnd['desc'],
+    items.append(dict(id='НГУ-'+s,code='НГУ-'+s,name=fnd['name'],name_en=ten(TYPE_EN,fnd['name']),
+        material=fnd['material'],material_en=ten(MAT_EN,fnd['material']),description=fnd['desc'],
         size='',square='',object='',excname='раскоп '+fnd['excav'] if fnd['excav'] else '',dating=fnd['dating'],
-        macro=macro_of(fnd['material']),type=fnd['name'],site=fnd['site'],owner='НовГУ',lon=lon,lat=lat,
-        img=url,external=True,in_ardb=False))
+        macro=macro_of(fnd['material']),type=fnd['name'],site=fnd['site'],site_en=ten(SITE_EN,fnd['site']),
+        owner='НовГУ',owner_en='NovSU',lon=lon,lat=lat,img=url,external=True,in_ardb=False))
     fc.append(None); fs.append(None)
 
 # ── СТРОГО типо-когерентный граф ──
@@ -172,7 +193,7 @@ presets=presets[:5]
 
 meta=dict(synthetic=False, n=len(items),
     note='Реальные изображения и метаданные SIMILIS (ИИМК РАН, НовГУ). Similarity — офлайн-прокси прод-эмбеддингов ResNet50/CLIP (иллюстрация). Изображения — обработанные одиночные снимки.',
-    owners=sorted(set(i['owner'] for i in items)), sites=sorted(set(i['site'] for i in items)),
+    owners=sorted(set(i['owner'] for i in items)), owners_en=[OWNER_EN.get(o,o) for o in sorted(set(i['owner'] for i in items))], sites=sorted(set(i['site'] for i in items)),
     presets=presets, novgu_source='portal.novsu.ru/archeology/db')
 json.dump({'_meta':meta,'items':items}, open(os.path.join(OUTDATA,'catalog.json'),'w'), ensure_ascii=False, indent=1)
 json.dump(graph, open(os.path.join(OUTDATA,'similarity_graph.json'),'w'), ensure_ascii=False)

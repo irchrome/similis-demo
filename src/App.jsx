@@ -23,6 +23,7 @@ export default function App() {
   const [favs, setFavs] = useState(() => new Set())
 
   const L = t(lang)
+  const dl = (it, f) => (lang === 'en' && it && it[f + '_en']) ? it[f + '_en'] : (it ? it[f] : '')
 
   useEffect(() => {
     Promise.all([
@@ -93,7 +94,7 @@ export default function App() {
               </div>
               <div className="control disabled">
                 <label title={L.prodOnly}>{L.tags} <span className="pill-prod">Prod</span></label>
-                <div className="selbox" style={{ color: 'var(--muted)', cursor: 'not-allowed' }}>сосуд, керамика, -фаянс</div>
+                <div className="selbox" style={{ color: 'var(--muted)', cursor: 'not-allowed' }}>{lang === 'en' ? 'vessel, ceramics, -faience' : 'сосуд, керамика, -фаянс'}</div>
               </div>
               <div className="control disabled">
                 <label title={L.prodOnly}>{L.domain} <span className="pill-prod">Prod</span></label>
@@ -109,13 +110,13 @@ export default function App() {
                 <div className="grid">
                   {results.map(it => (
                     <div className="card" key={it.id} onClick={() => setDetail(it)}>
-                      <div className="ch"><span>{it.owner}</span><span className="score">{it.score.toFixed(2)}</span></div>
+                      <div className="ch"><span>{dl(it, 'owner')}</span><span className="score">{it.score.toFixed(2)}</span></div>
                       <div className="cimg"><img src={imgSrc(it)} onError={e => { e.target.src = PLACEHOLDER }} alt="" /></div>
                       <div className="cb">
                         <div className="code">{it.code}</div>
-                        <div className="nm">{it.name}</div>
+                        <div className="nm">{dl(it, 'name')}</div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
-                          <span>{it.material}</span>
+                          <span>{dl(it, 'material')}</span>
                           <span className="star" onClick={e => { e.stopPropagation(); toggleFav(it.id) }}>{favs.has(it.id) ? '★' : '☆'}</span>
                         </div>
                       </div>
@@ -133,17 +134,17 @@ export default function App() {
                   {[...favs].map(id => byId[id]).filter(Boolean).map(it => (
                     <div className="fav-item" key={it.id}>
                       <img src={imgSrc(it)} onError={e => { e.target.src = PLACEHOLDER }} alt="" />
-                      <div><div style={{ fontWeight: 600 }}>{it.name}</div><div style={{ color: 'var(--muted)' }}>{it.code}</div></div>
+                      <div><div style={{ fontWeight: 600 }}>{dl(it, 'name')}</div><div style={{ color: 'var(--muted)' }}>{it.code}</div></div>
                     </div>
                   ))}
                 </div>
               )}
               <h3>{L.map}</h3>
-              <SiteMap items={data.items} activeOwners={new Set(results.map(r => r.owner))} />
+              <SiteMap items={data.items} activeOwners={new Set(results.map(r => r.owner))} lang={lang} />
             </aside>
           </div>
         ) : (
-          <Dashboard data={data} L={L} />
+          <Dashboard data={data} L={L} lang={lang} />
         )}
 
         <p className="foot">{L.honesty}</p>
@@ -159,7 +160,7 @@ export default function App() {
                 {data._meta.presets.map(pid => byId[pid]).filter(Boolean).map(it => (
                   <div className="card" key={it.id} onClick={() => { setQuery(it.id); setPresetOpen(false) }}>
                     <div className="cimg"><img src={imgSrc(it)} onError={e => { e.target.src = PLACEHOLDER }} alt="" /></div>
-                    <div className="cb"><div className="nm">{it.name}</div><div className="code">{it.material}</div></div>
+                    <div className="cb"><div className="nm">{dl(it, 'name')}</div><div className="code">{dl(it, 'material')}</div></div>
                   </div>
                 ))}
               </div>
@@ -168,13 +169,14 @@ export default function App() {
         </div>
       )}
 
-      {detail && <DetailModal it={detail} L={L} onClose={() => setDetail(null)} />}
+      {detail && <DetailModal it={detail} L={L} lang={lang} onClose={() => setDetail(null)} />}
     </div>
   )
 }
 
-function DetailModal({ it, L, onClose }) {
+function DetailModal({ it, L, lang, onClose }) {
   const row = (label, val) => val ? <div className="mfield"><b>{label}:</b> {val}</div> : null
+  const g = (f) => (lang === 'en' && it[f + '_en']) ? it[f + '_en'] : it[f]
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
@@ -183,16 +185,16 @@ function DetailModal({ it, L, onClose }) {
           <div className="mimg"><img src={imgSrc(it)} onError={e => { e.target.src = PLACEHOLDER }} alt="" /></div>
           <div>
             {row(L.fCode, it.code)}
-            {row(L.fName, it.name)}
-            {row(L.fMaterial, it.material)}
+            {row(L.fName, g('name'))}
+            {row(L.fMaterial, g('material'))}
             {row(L.fDesc, it.description)}
             {row(L.fSize, it.size)}
             {row(L.fDating, it.dating)}
             {row(L.fSquare, it.square)}
             {row(L.fObject, it.object)}
             {row(L.fExc, it.excname)}
-            {row(L.fSite, it.site)}
-            <div className="mfield"><b>{L.fOwner}:</b> <span className="owner-link">{it.owner}</span></div>
+            {row(L.fSite, g('site'))}
+            <div className="mfield"><b>{L.fOwner}:</b> <span className="owner-link">{g('owner')}</span></div>
           </div>
         </div>
       </div>
@@ -202,14 +204,15 @@ function DetailModal({ it, L, onClose }) {
 
 // Статичная SVG-карта СЗ России (offline-first): Финский залив, Ладога, Волхов.
 // Пины кластеризованы по владельцу: ИИМК РАН → Санкт-Петербург, НовГУ → Старая Русса/Новгород.
-function SiteMap({ items, activeOwners }) {
+function SiteMap({ items, activeOwners, lang }) {
+  const en = lang === 'en'
   const W = 280, H = 230
   // clusters
   const clusters = {}
   for (const it of items) {
     const key = it.owner === 'НовГУ' ? 'nov' : 'spb'
     if (!clusters[key]) clusters[key] = { owner: it.owner, sites: new Set(), n: 0,
-      label: key === 'nov' ? 'Старая Русса / Новгород' : 'Санкт-Петербург',
+      label: key === 'nov' ? (en ? 'Staraya Russa / Novgorod' : 'Старая Русса / Новгород') : (en ? 'Saint Petersburg' : 'Санкт-Петербург'),
       lon: key === 'nov' ? 31.33 : 30.35, lat: key === 'nov' ? 57.99 : 59.94 }
     clusters[key].sites.add(it.site); clusters[key].n++
   }
@@ -227,9 +230,9 @@ function SiteMap({ items, activeOwners }) {
         <ellipse cx="228" cy="60" rx="46" ry="34" fill="#abd3e0" stroke="#9cc4d2" />
         {/* Волхов: из Ладоги к Новгороду */}
         <path d="M205 86 Q198 130 190 168" fill="none" stroke="#9cc4d2" strokeWidth="2.4" />
-        <text x="14" y="78" fontSize="8" fill="#5f7d88" fontStyle="italic">Финский зал.</text>
-        <text x="212" y="62" fontSize="8" fill="#5f7d88" fontStyle="italic">Ладога</text>
-        <text x={W - 6} y={H - 6} fontSize="8" fill="#7a8a90" textAnchor="end">Северо-Запад РФ</text>
+        <text x="14" y="78" fontSize="8" fill="#5f7d88" fontStyle="italic">{en ? 'Gulf of Finland' : 'Финский зал.'}</text>
+        <text x="212" y="62" fontSize="8" fill="#5f7d88" fontStyle="italic">{en ? 'Ladoga' : 'Ладога'}</text>
+        <text x={W - 6} y={H - 6} fontSize="8" fill="#7a8a90" textAnchor="end">{en ? 'NW Russia' : 'Северо-Запад РФ'}</text>
         {Object.values(clusters).map((c, i) => {
           const on = activeOwners.has(c.owner)
           return (
@@ -246,13 +249,15 @@ function SiteMap({ items, activeOwners }) {
   )
 }
 
-function Dashboard({ data, L }) {
+const MACRO_EN = { 'Стекло': 'Glass', 'Керамика': 'Ceramics', 'Металл': 'Metal', 'Органика': 'Organic', 'Прочее': 'Other', 'Янтарь': 'Amber', 'Глина': 'Clay' }
+function Dashboard({ data, L, lang }) {
+  const en = lang === 'en'
   const items = data.items
   const typeCount = {}
   for (const it of items) typeCount[it.macro] = (typeCount[it.macro] || 0) + 1
-  const typeData = Object.entries(typeCount).map(([name, value]) => ({ name, value }))
+  const typeData = Object.entries(typeCount).map(([name, value]) => ({ name: en ? (MACRO_EN[name] || name) : name, value }))
   const siteCount = {}
-  for (const it of items) siteCount[it.site] = (siteCount[it.site] || 0) + 1
+  for (const it of items) siteCount[en && it.site_en ? it.site_en : it.site] = (siteCount[en && it.site_en ? it.site_en : it.site] || 0) + 1
   const siteData = Object.entries(siteCount).map(([name, v]) => ({ name: name.split(' (')[0], v })).sort((a, b) => b.v - a.v)
   const PIE = ['#4e79a7', '#59a14f', '#e0a03a', '#af7aa1', '#9c755f']
   return (
