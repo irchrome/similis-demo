@@ -139,7 +139,7 @@ export default function App() {
                 </div>
               )}
               <h3>{L.map}</h3>
-              <SiteMap items={data.items} active={new Set(results.map(r => r.site))} />
+              <SiteMap items={data.items} activeOwners={new Set(results.map(r => r.owner))} />
             </aside>
           </div>
         ) : (
@@ -200,26 +200,44 @@ function DetailModal({ it, L, onClose }) {
   )
 }
 
-// Статичная SVG-карта СЗ России (offline-first). lon 29.5..32.0 → x, lat 57.4..60.2 → y.
-function SiteMap({ items, active }) {
-  const W = 260, H = 220
-  const x = lon => ((lon - 29.5) / (32.0 - 29.5)) * (W - 40) + 20
-  const y = lat => (1 - (lat - 57.4) / (60.2 - 57.4)) * (H - 40) + 20
-  const sites = {}
-  for (const it of items) if (!sites[it.site]) sites[it.site] = { lon: it.lon, lat: it.lat, owner: it.owner }
+// Статичная SVG-карта СЗ России (offline-first): Финский залив, Ладога, Волхов.
+// Пины кластеризованы по владельцу: ИИМК РАН → Санкт-Петербург, НовГУ → Старая Русса/Новгород.
+function SiteMap({ items, activeOwners }) {
+  const W = 280, H = 230
+  // clusters
+  const clusters = {}
+  for (const it of items) {
+    const key = it.owner === 'НовГУ' ? 'nov' : 'spb'
+    if (!clusters[key]) clusters[key] = { owner: it.owner, sites: new Set(), n: 0,
+      label: key === 'nov' ? 'Старая Русса / Новгород' : 'Санкт-Петербург',
+      lon: key === 'nov' ? 31.33 : 30.35, lat: key === 'nov' ? 57.99 : 59.94 }
+    clusters[key].sites.add(it.site); clusters[key].n++
+  }
+  const x = lon => ((lon - 27.6) / (33.2 - 27.6)) * W
+  const y = lat => (1 - (lat - 57.2) / (60.6 - 57.2)) * H
   return (
     <div className="map-wrap" style={{ height: H }}>
       <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
-        <rect width={W} height={H} fill="#cfe0e6" />
-        <path d="M20 40 Q90 20 150 55 T250 70 L250 200 Q160 190 90 200 T20 185 Z" fill="#e4e2d2" stroke="#c7c5b4" />
-        <text x={W - 8} y={H - 8} fontSize="9" fill="#7a8a90" textAnchor="end">Северо-Запад РФ</text>
-        {Object.entries(sites).map(([name, s]) => {
-          const on = active.has(name)
+        <rect width={W} height={H} fill="#abd3e0" />
+        {/* суша */}
+        <path d="M0 92 Q60 84 96 96 L150 90 Q210 96 280 84 L280 230 L0 230 Z" fill="#dfe0cf" stroke="#c7c8b4" strokeWidth="1" />
+        {/* Финский залив (клин слева-сверху) */}
+        <path d="M0 60 L120 96 L60 110 L0 120 Z" fill="#abd3e0" />
+        {/* Ладожское озеро (справа-сверху) */}
+        <ellipse cx="228" cy="60" rx="46" ry="34" fill="#abd3e0" stroke="#9cc4d2" />
+        {/* Волхов: из Ладоги к Новгороду */}
+        <path d="M205 86 Q198 130 190 168" fill="none" stroke="#9cc4d2" strokeWidth="2.4" />
+        <text x="14" y="78" fontSize="8" fill="#5f7d88" fontStyle="italic">Финский зал.</text>
+        <text x="212" y="62" fontSize="8" fill="#5f7d88" fontStyle="italic">Ладога</text>
+        <text x={W - 6} y={H - 6} fontSize="8" fill="#7a8a90" textAnchor="end">Северо-Запад РФ</text>
+        {Object.values(clusters).map((c, i) => {
+          const on = activeOwners.has(c.owner)
           return (
-            <g key={name} className="pin-g" transform={`translate(${x(s.lon)},${y(s.lat)})`}>
-              <path d="M0 0 C-6 -10 -8 -14 0 -18 C8 -14 6 -10 0 0 Z" fill={on ? OWNER_COLOR[s.owner] : '#b6b6a6'} stroke="#fff" strokeWidth="1" />
-              <circle cx="0" cy="-13" r="2.4" fill="#fff" />
-              {on && <text x="6" y="-8" fontSize="8" fill="#2a2a24">{name.split(' (')[0]}</text>}
+            <g key={i} className="pin-g" transform={`translate(${x(c.lon)},${y(c.lat)})`}>
+              <path d="M0 0 C-7 -12 -9 -17 0 -22 C9 -17 7 -12 0 0 Z" fill={on ? OWNER_COLOR[c.owner] : '#a9a99a'} stroke="#fff" strokeWidth="1.3" />
+              <circle cx="0" cy="-15" r="4.5" fill="#fff" />
+              <text x="0" y="-12.5" fontSize="6.5" fontWeight="700" fill={on ? OWNER_COLOR[c.owner] : '#888'} textAnchor="middle">{c.n}</text>
+              <text x="9" y="-9" fontSize="8" fill="#2a2a24" fontWeight={on ? 700 : 400}>{c.label}</text>
             </g>
           )
         })}
